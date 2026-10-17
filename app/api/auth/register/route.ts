@@ -36,7 +36,16 @@ export async function POST(req: Request) {
       path: "/",
     });
 
-    return NextResponse.json({ success: true, message: "Registration successful" });
+    return NextResponse.json(
+      { success: true, message: "Registration successful" },
+      {
+        headers: {
+          "Cache-Control": "private, no-cache, no-store, must-revalidate, max-age=0",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
+    );
   } catch (error) {
     console.error("Registration error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

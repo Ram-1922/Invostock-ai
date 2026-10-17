@@ -20,7 +20,13 @@ export async function GET() {
     const secureString = encryptPayload(invoices);
 
     return new NextResponse(secureString, {
-      headers: { "Content-Type": "text/plain" }
+      headers: {
+        "Content-Type": "text/plain",
+        "Cache-Control": "private, no-cache, no-store, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "Surrogate-Control": "no-store",
+      }
     });
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch invoices" }, { status: 500 });
@@ -65,7 +71,7 @@ export async function POST(req: Request) {
       // 3. Create Invoice using the guaranteed unique finalInvoiceNumber
       const invoice = await tx.invoice.create({
         data: {
-          invoiceNumber: finalInvoiceNumber, // <--- Updated this line
+          invoiceNumber: finalInvoiceNumber,
           supplier: data.supplier,
           invoiceDate: new Date(data.invoiceDate),
           totalAmount: data.totalAmount,
@@ -99,7 +105,16 @@ export async function POST(req: Request) {
       return invoice;
     });
 
-    return NextResponse.json({ success: true, invoice: result });
+    return NextResponse.json(
+      { success: true, invoice: result },
+      {
+        headers: {
+          "Cache-Control": "private, no-cache, no-store, must-revalidate, max-age=0",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        }
+      }
+    );
   } catch (error: any) {
     console.error("Database transaction error:", error);
 
@@ -114,9 +129,27 @@ export async function POST(req: Request) {
 
 export async function DELETE() {
   try {
-    // Delete all invoices (Invoice items will be auto-deleted due to Cascade in Prisma)
-    await prisma.invoice.deleteMany();
-    return NextResponse.json({ success: true, message: "All invoices cleared" });
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const payload = await verifyToken(token);
+    if (!payload || !payload.userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    // Delete user's invoices (Invoice items will be auto-deleted due to Cascade in Prisma)
+    await prisma.invoice.deleteMany({
+      where: { userId: payload.userId }
+    });
+    return NextResponse.json(
+      { success: true, message: "All invoices cleared" },
+      {
+        headers: {
+          "Cache-Control": "private, no-cache, no-store, must-revalidate, max-age=0",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        }
+      }
+    );
   } catch (error) {
     return NextResponse.json({ error: "Failed to clear invoices" }, { status: 500 });
   }

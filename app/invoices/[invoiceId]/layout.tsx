@@ -10,8 +10,8 @@ export async function generateMetadata({
     title: `Invoice Details (${invoiceId})`,
     description: `Inspect extracted supplier invoice data, line items, and totals on InvoStock AI.`,
     robots: {
-      index: true,
-      follow: true,
+      index: false,
+      follow: false,
     },
   };
 }

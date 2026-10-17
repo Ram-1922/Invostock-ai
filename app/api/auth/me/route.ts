@@ -22,14 +22,20 @@ export async function GET() {
 
     const secureString = encryptPayload(user);
     return new NextResponse(secureString, {
-      headers: { "Content-Type": "text/plain" }
+      headers: {
+        "Content-Type": "text/plain",
+        "Cache-Control": "private, no-cache, no-store, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "Surrogate-Control": "no-store",
+      }
     });
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 });
   }
 }
 
-// NEW: Add PUT method to update user profile
+// Add PUT method to update user profile
 export async function PUT(req: Request) {
   try {
     const cookieStore = await cookies();
@@ -53,7 +59,13 @@ export async function PUT(req: Request) {
       select: { id: true, name: true, email: true, phone: true, city: true, pincode: true }
     });
 
-    return NextResponse.json(updatedUser);
+    return NextResponse.json(updatedUser, {
+      headers: {
+        "Cache-Control": "private, no-cache, no-store, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      }
+    });
   } catch (error) {
     console.error("Profile update error:", error);
     return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });

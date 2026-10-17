@@ -89,6 +89,56 @@ function getIp(request: NextRequest): string {
   );
 }
 
+const ANTI_CACHE_HEADERS: Record<string, string> = {
+  "Cache-Control": "private, no-cache, no-store, must-revalidate, proxy-revalidate, max-age=0",
+  "Pragma": "no-cache",
+  "Expires": "0",
+  "Surrogate-Control": "no-store",
+};
+
+function isAllowedOrigin(origin: string | null, request: NextRequest): boolean {
+  if (!origin) return true; // Same-origin navigation or non-browser request
+
+  try {
+    const originUrl = new URL(origin);
+    const hostHeader = request.headers.get("host") || request.nextUrl.host;
+
+    // Check host match (e.g., invostock.ai, localhost:3000, vercel domain)
+    if (originUrl.host === hostHeader) return true;
+    if (originUrl.origin === request.nextUrl.origin) return true;
+
+    // Configured public URL
+    const envAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (envAppUrl) {
+      try {
+        const parsed = new URL(envAppUrl);
+        if (originUrl.host === parsed.host) return true;
+      } catch {}
+    }
+
+    // Vercel deployment preview/production URL
+    const vercelUrl = process.env.VERCEL_URL;
+    if (vercelUrl && (originUrl.host === vercelUrl || originUrl.host.endsWith(".vercel.app"))) {
+      return true;
+    }
+
+    // Local dev origins
+    if (process.env.NODE_ENV !== "production") {
+      if (
+        originUrl.hostname === "localhost" ||
+        originUrl.hostname === "127.0.0.1" ||
+        originUrl.hostname === "192.168.0.16"
+      ) {
+        return true;
+      }
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
 function blocked(rule: Rule, retryAfter: number, reset: number) {
   return NextResponse.json(
     {
@@ -104,13 +154,37 @@ function blocked(rule: Rule, retryAfter: number, reset: number) {
         "X-RateLimit-Remaining": "0",
         "X-RateLimit-Reset": reset.toString(),
         "Retry-After": retryAfter.toString(),
+        ...ANTI_CACHE_HEADERS,
       },
     }
   );
 }
 
 export async function proxy(request: NextRequest) {
-  if (request.method === "OPTIONS") return NextResponse.next();
+  const origin = request.headers.get("origin");
+
+  // Enforce strict CORS policy - block untrusted cross-domain read/write requests
+  if (origin && !isAllowedOrigin(origin, request)) {
+    return NextResponse.json(
+      { error: "Cross-Origin requests from this origin are not permitted." },
+      { status: 403, headers: ANTI_CACHE_HEADERS }
+    );
+  }
+
+  // Handle preflight requests securely
+  if (request.method === "OPTIONS") {
+    return new NextResponse(null, {
+      status: 204,
+      headers: {
+        ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+        "Access-Control-Max-Age": "86400",
+        "Vary": "Origin",
+        ...ANTI_CACHE_HEADERS,
+      },
+    });
+  }
 
   const { pathname } = request.nextUrl;
   const rule = RULES.find((r) => r.match(pathname, request.method))!;
@@ -142,10 +216,29 @@ export async function proxy(request: NextRequest) {
     const res = NextResponse.next();
     res.headers.set("X-RateLimit-Limit", limit.toString());
     res.headers.set("X-RateLimit-Remaining", remaining.toString());
+
+    // Apply strict anti-caching headers on all API responses
+    for (const [key, val] of Object.entries(ANTI_CACHE_HEADERS)) {
+      res.headers.set(key, val);
+    }
+
+    if (origin) {
+      res.headers.set("Access-Control-Allow-Origin", origin);
+      res.headers.set("Vary", "Origin");
+    }
+
     return res;
   } catch (err) {
     console.error("[rate-limit] Upstash error, allowing request:", err);
-    return NextResponse.next();
+    const fallbackRes = NextResponse.next();
+    for (const [key, val] of Object.entries(ANTI_CACHE_HEADERS)) {
+      fallbackRes.headers.set(key, val);
+    }
+    if (origin) {
+      fallbackRes.headers.set("Access-Control-Allow-Origin", origin);
+      fallbackRes.headers.set("Vary", "Origin");
+    }
+    return fallbackRes;
   }
 }
 

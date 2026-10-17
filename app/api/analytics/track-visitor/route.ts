@@ -28,39 +28,23 @@ export async function POST(req: Request) {
       path: "/",
     });
 
-    return NextResponse.json({
-      success: true,
-      message: "Marketing payload stored securely in HttpOnly cookie",
-      data: marketingPayload,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Marketing payload stored securely in HttpOnly cookie",
+        data: marketingPayload,
+      },
+      {
+        headers: {
+          "Cache-Control": "private, no-cache, no-store, must-revalidate, max-age=0",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
+    );
   } catch (error) {
     console.error("Failed to store marketing cookie:", error);
     return NextResponse.json({ error: "Failed to set marketing cookie" }, { status: 500 });
   }
 }
 
-export async function GET() {
-  try {
-    const cookieStore = await cookies();
-    const cookieValue = cookieStore.get("marketing_visitor_data")?.value;
-
-    if (!cookieValue) {
-      return NextResponse.json({ data: null });
-    }
-
-    let parsedData = null;
-    try {
-      parsedData = JSON.parse(cookieValue);
-    } catch {
-      try {
-        parsedData = JSON.parse(decodeURIComponent(cookieValue));
-      } catch {
-        parsedData = cookieValue;
-      }
-    }
-
-    return NextResponse.json({ data: parsedData });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to read marketing cookie" }, { status: 500 });
-  }
-}

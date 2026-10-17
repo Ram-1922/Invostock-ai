@@ -1,9 +1,22 @@
 import { NextResponse } from "next/server";
 import { extractTextFromFile } from "@/_lib/ocr";
 import { parseInvoiceText } from "@/_lib/llm";
+import { cookies } from "next/headers";
+import { verifyToken } from "@/_lib/auth";
 
 export async function POST(req: Request) {
   try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const payload = await verifyToken(token);
+    if (!payload || !payload.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const formData = await req.formData();
     const file = formData.get("file") as File;
 
@@ -33,7 +46,13 @@ export async function POST(req: Request) {
     }
 
     // Return the successful structured data
-    return NextResponse.json(structuredData);
+    return NextResponse.json(structuredData, {
+      headers: {
+        "Cache-Control": "private, no-cache, no-store, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      }
+    });
 
   } catch (error: any) {
     console.error("Extraction API Error:", error);
